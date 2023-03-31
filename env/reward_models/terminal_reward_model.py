@@ -25,31 +25,19 @@
 #
 
 import torch
-import numpy as np
-
-from env.transition_model import TransitionModel
-from utils.utils import job_and_task_to_node, node_to_job_and_task
 
 
-class PSPTransitionModel:
-    def __init__(
-        self,
-        env_specification,
-        problem,
-    ):
-        self.env_specification = env_specification
-        self.problem = problem
+class TerminalRewardModel:
+    def __init__(self):
+        pass
 
-    def run(self, state, node_id):  # noqa
-        resources = problem.get_resources(node_id)
-        state.observe_real_duration(node_id)
-        for r in resources:
-            last_mode_on_resource = state.get_last_mode_on_resource()
-            if last_mode_on_resource is not None:
-                state.set_priority(last_mode_on_resource, node_id)
-            state.cache_last_mode_on_resource(r, node_id)
-        state.update_completion_times(node_id)
-        state.affect_node(node_id)
-
-    def get_mask(self, state):
-        return state.get_selectable() == 1
+    def evaluate(self, state):
+        """
+        Reward is 0 for every time steps, except for the last one, where it is the opposite of the Makespan
+        """
+        features_tp = next_obs.features
+        is_done = state.done()
+        if not is_done:
+            return 0
+        makespan = torch.max(state.tct()[:, 0]).item()
+        return -reward

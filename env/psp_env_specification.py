@@ -49,6 +49,8 @@ class PSPEnvSpecification:
         self.input_list = input_list
         if "selectable" in input_list:
             self.input_list.remove("selectable")
+        if "duration" in input_list:
+            self.input_list.remove("duration")
         self.max_edges_factor = max_edges_factor
         self.sample_n_jobs = sample_n_jobs
         self.chunk_n_jobs = chunk_n_jobs
@@ -62,7 +64,8 @@ class PSPEnvSpecification:
         # 4 for task completion times, 1 for is_affected
         # 1 for mandatory selectable
         # 1 for job id (in case of several modes per job)
-        n_features = 7
+        # 4 for duration
+        n_features = 11
         # level of resource used by every node
         n_features += self.max_n_resources
         # most features make 4 values

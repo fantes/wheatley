@@ -26,9 +26,8 @@ from gymnasium.spaces import Discrete, Dict, Box
 import numpy as np
 
 from env.transition_models.psp_transition_model import PSPTransitionModel
-from env.reward_models.sparse_reward_model import SparseRewardModel
+from env.reward_models.terminal_reward_model import TerminalRewardModel
 from utils.psp_env_observation import PSPEnvObservation as EnvObservation
-from utils.utils import get_n_features
 from env.psp_state import PSPState as State
 
 
