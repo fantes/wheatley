@@ -61,7 +61,8 @@ class PSPEnvSpecification:
     def get_n_features(self):
         # 4 for task completion times, 1 for is_affected
         # 1 for mandatory selectable
-        n_features = 6
+        # 1 for job id (in case of several modes per job)
+        n_features = 7
         # level of resource used by every node
         n_features += self.max_n_resources
         # most features make 4 values

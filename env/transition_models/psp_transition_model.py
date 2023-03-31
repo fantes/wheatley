@@ -31,16 +31,25 @@ from env.transition_model import TransitionModel
 from utils.utils import job_and_task_to_node, node_to_job_and_task
 
 
-class PSPTransitionModel(TransitionModel):
+class PSPTransitionModel:
     def __init__(
         self,
         env_specification,
-        observe_real_duration_when_affect=False,
+        problem,
     ):
-        self.observe_real_duration_when_affect = observe_real_duration_when_affect
+
 
     def run(self, state, node_id):  # noqa
-        pass
+        resources = problem.get_resources(node_id)
+        state.observe_real_duration(node_id)
+        for r in resources:
+            last_mode_on_resource = state.get_last_mode_on_resource()
+            if last_mode_on_resource is not None:
+                state.set_priority(last_mode_on_resource, node_id)
+            state.cache_last_mode_on_resource(r, node_id)
+        state.update_completion_times(node_id)
+        state.affect_node(node_id)
 
-    def get_mask(self, state, add_boolean=False):
+
+    def get_mask(self, state):
         return state.get_selectable() == 1

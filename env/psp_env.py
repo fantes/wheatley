@@ -217,7 +217,7 @@ class PSPEnv(gym.Env):
         )
 
     def _create_transition_model(self):
-        self.transition_model = PSPTransitionModel(self.env_specification)
+        self.transition_model = PSPTransitionModel(self.env_specification, self.problem)
 
     def _create_reward_model(self):
         self.reward_model = TerminalRewardModel()
