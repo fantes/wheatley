@@ -496,6 +496,26 @@ def lr_schedule_linear(top, end, percent_warmup, x_orig):
     return lr
 
 
+def compute_resources_graph(r_info):
+    # r_info is n_modes x n_resources, contains values between 0 and 1
+    conflicts = np.where(
+        np.logical_and(
+            np.expand_dims(r_info, 0) != 0,
+            np.expand_dims(r_info, 1) != 0,
+            out=np.zeros(
+                (r_info.shape[0], r_info.shape[0], r_info.shape[1]), dtype=bool
+            ),
+            where=np.expand_dims(np.logical_not(np.diag([True] * n_modes)), 2),
+        )
+    )
+    # conflicts[0] is source of edge
+    # conflicts[1] is dest of edge
+    # conflicts[2] is ressource id
+    # both directions are created at once
+    conflicts_val = r_info[conflicts[0], conflicts[2]]
+    return np.stack([conflicts[0], conflicts[1]]), conflicts[2], conflicts_val
+
+
 def compute_conflicts_cliques(machineid):
     n_nodes = machineid.shape[0]
     m1 = machineid.unsqueeze(0).expand(n_nodes, n_nodes)
