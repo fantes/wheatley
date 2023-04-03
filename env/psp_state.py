@@ -57,6 +57,7 @@ class PSPState:
         self.reset_selectable()
 
         self.affect_node(0)
+        self.affect_node(1)
         exit()
 
     def reset_durations(self, redraw_real=True):
@@ -150,16 +151,34 @@ class PSPState:
         assert self.features[nodeid, 1] == 1
         # all modes become unselectable
         mm = self.job_modes[self.features[nodeid, 2].astype(int)]
-        print("mm", mm)
         self.features[mm, 1] = 0
-        # make sucessor selctable, if other parents *jobs* are affected
+        # mark as affected
+        self.features[nodeid, 0] = 1
+        # make sucessor selectable, if other parents *jobs* are affected
         for successor in self.graph.successors(nodeid):
-            print("successor", successor)
-            parents_modes = list(self.graph.predecessors(successor))
-            print("parents_modes", parents_modes)
-            parents_jobs = set(self.features[parents_modes, 2].astype(int))
-            print("parents_jobs", parents_jobs)
+            parents_jobs = set(
+                [
+                    self.features[pm, 2].astype(int)
+                    for pm in self.graph.predecessors(successor)
+                ]
+            )
+            # no need to test job from currently affected node
+            parents_jobs.remove(self.features[nodeid, 2])
             # check if one mode per job is affected
+            all_parent_jobs_affected = True
+            for pj in parents_jobs:
+                pjm = self.job_modes[pj]
+                job_is_affected = False
+                for pjmm in pjm:
+                    if self.features[pjmm, 0]:
+                        job_is_affected = True
+                        break
+                if not job_is_affected:
+                    all_parent_jobs_affected = False
+                    break
+            if all_parent_jobs_affected:
+                # make selectable, at last
+                self.features[successor, 1] = 1
 
     def done(self):
         return np.sum(self.features[:, 0]) == self.problem["n_jobs"]
