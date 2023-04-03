@@ -3,6 +3,7 @@ import numpy as np
 # import matplotlib.pyplot as plt
 import networkx as nx
 import time
+from utils.utils import compute_resources_graph
 
 
 class PSPState:
@@ -56,8 +57,6 @@ class PSPState:
         self.reset_resources()
         self.reset_selectable()
 
-        self.affect_node(0)
-        self.affect_node(1)
         exit()
 
     def reset_durations(self, redraw_real=True):
