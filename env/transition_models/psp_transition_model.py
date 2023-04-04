@@ -41,13 +41,7 @@ class PSPTransitionModel:
         self.problem = problem
 
     def run(self, state, node_id):  # noqa
-        resources = problem.get_resources(node_id)
-        state.observe_real_duration(node_id)
-        for r in resources:
-            last_mode_on_resource = state.get_last_mode_on_resource()
-            if last_mode_on_resource is not None:
-                state.set_priority(last_mode_on_resource, node_id)
-            state.cache_last_mode_on_resource(r, node_id)
+        state.add_resource_priority(node_id)
         state.update_completion_times(node_id)
         state.affect_node(node_id)
 
