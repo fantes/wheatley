@@ -4,6 +4,7 @@ import numpy as np
 import networkx as nx
 import time
 from utils.utils import compute_resources_graph
+from utils.resource_timelines import ResourceTimeline
 
 
 class PSPState:
@@ -50,10 +51,23 @@ class PSPState:
         # nx.draw_networkx(self.graph)
         # plt.show()
         self.numpy_problem_graph = np.array(self.problem_edges)
-        self.priority_edges = []
+        self.resources_edges = []
+        self.resources_edges_att = []
+        self.affected_nodes = set()
 
-        self.resources_users = [[] * self.problem["n_resources"]]
-        self.resources_used = [[] * self.problem["n_resources"]]
+        self.resource_timelines = []
+        for r in range(self.problem["n_renewable_resources"]):
+            self.resource_timelines.append(
+                ResourceTimeline(
+                    max_level=self.problem["resource_availability"][r], renewable=True
+                )
+            )
+        for r in range(self.problem["n_nonrenewable_resources"]):
+            self.resource_timelines.append(
+                ResourceTimeline(
+                    max_level=self.problem["resource_availability"][r], renewable=False
+                )
+            )
 
         self.reset_durations()
         self.reset_task_completion_times()
@@ -67,9 +81,6 @@ class PSPState:
                 self.resources_id,
                 self.resources_val,
             ) = compute_resources_graph(self.features[:, 9:])
-
-        self.add_resource_priority(1)
-        exit()
 
     def reset_durations(self, redraw_real=True):
         # at init, draw real durations from distrib if not determinisitc
@@ -193,11 +204,87 @@ class PSPState:
                 # make selectable, at last
                 self.features[successor, 1] = 1
 
-    def add_resource_priority(self, node_id):
-        ru = np.where(self.features[node_id, 9:] != 0)[0]
-        for r in ru:
-            self.resources_users[r].append(node_id)
-            self.resources_used[r].append(self.features[node_id, 9 + r])
+    def get_last_finishing_dates(self, jobs):
+        if len(jobs) == 0:
+            return np.zeros((3))
+        tct = self.dates = self.get_task_completion_times(jobs)
+        return np.amax(dates, axis=0)
+
+    def compute_dates_on_affectation(self, node_id):
+        job_parents = set(self.graph.predecessors(node_id))
+        affected_nodes = set(np.where(self.features[:, 0] == 1))
+        print("job_parents", job_parents)
+        print("affected_nodes", affected_nodes)
+        affected_parents = affected_parents.intersection(job_parents)
+        last_parent_finish_date = self.get_last_finishing_dates(affected_parents)
+
+        resources_used = np.where(self.features[node_id, 9:] != 0)[0]
+        max_r_date = 0
+        pred_on_resource = None
+        pred_on_resource_is_start = None
+        constraining_resource = None
+
+        for r in resources_used:
+            date, jobid, start_tp = self.get_resource_available_date(
+                r, self.features[node_id, 9 + r]
+            )
+            if date > max_date:
+                max_r_date = date
+                pred_on_resource = job_id
+                pred_on_resource_is_start = start_tp
+                constraining_resource = r
+                self.add_resource_precedence(jobid, node_id, start_tp, criticial=True)
+            else:
+                self.add_resource_precedence(jobid, node_id, start_tp, critical=False)
+
+        # do a min per coord
+        start = np.max(max_r_date, last_parent_finish_date)
+        self.features[node_id, 6:9] = start + self.features[node_id, 3:6]
+
+        self.insert_timepoints_in_resources(node_id, start, self.features[node_id, 6:9])
+
+        self.update_completion_times(node_id)
+
+    def add_resource_precedence(self, prec, succ, on_start, critical):
+        self.resources_edges.append((prec, succ))
+        self.resources_edges_att.append((on_start, critical))
+
+    def get_resource_available_date(self, rid, level):
+        return self.resource_timelines[rid].availability(level)
+
+    def insert_timepoints_in_resources(self, node_id, start, end):
+        resources_used = np.where(self.features[node_id, 9:] != 0)[0]
+        for r in resources_used:
+            self.resource_timelines[r].consume(
+                node_id, self.features[node_id, 9 + r], start, end
+            )
+
+    def update_completion_times(node_id):
+        open_nodes = [node_id]
+        while open_nodes:
+            cur_node_id = open_nodes.pop(0)
+
+            if self.problem_graph.in_degree(cur_node_id) == 0:
+                max_tct_predecessors = np.zeros((3))
+            else:
+                task_comp_time_pred = np.stack(
+                    [
+                        self.get_task_completion_times(p)
+                        for p in self.problem_graph.predecessors(cur_node_id)
+                    ]
+                )
+                max_tct_predecessors = np.max(task_comp_time_pred, 0)[0]
+
+            new_completion_time = max_tct_predecessors + self.get_durations(cur_node_id)
+            self.set_task_completion_times(cur_node_id, new_completion_time)
+            for successor in self.problem_graph.successors(cur_node_id):
+                to_open = True
+                for p in self.problem_graph.predecessors(successor):
+                    if p in open_nodes:
+                        to_open = False
+                        break
+                if to_open:
+                    open_nodes.append(successor)
 
     def done(self):
         return np.sum(self.features[:, 0]) == self.problem["n_jobs"]

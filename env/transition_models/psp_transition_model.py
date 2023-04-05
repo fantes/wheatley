@@ -41,9 +41,9 @@ class PSPTransitionModel:
         self.problem = problem
 
     def run(self, state, node_id):  # noqa
-        state.add_resource_priority(node_id)
-        state.update_completion_times(node_id)
+        state.compute_dates_on_affectation(node_id)
         state.affect_node(node_id)
+        state.update_completion_times(node_id)
 
     def get_mask(self, state):
         return state.get_selectable() == 1
