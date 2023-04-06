@@ -4,7 +4,7 @@ import numpy as np
 import networkx as nx
 import time
 from utils.utils import compute_resources_graph
-from utils.resource_timelines import ResourceTimeline
+from utils.resource_timeline import ResourceTimeline
 
 
 class PSPState:
@@ -51,23 +51,36 @@ class PSPState:
         # nx.draw_networkx(self.graph)
         # plt.show()
         self.numpy_problem_graph = np.array(self.problem_edges)
-        self.resources_edges = []
-        self.resources_edges_att = []
         self.affected_nodes = set()
 
+        print('self.problem["n_resources"]', self.problem["n_resources"])
         self.resource_timelines = []
+        print("resource_timelines", self.resource_timelines)
         for r in range(self.problem["n_renewable_resources"]):
-            self.resource_timelines.append(
-                ResourceTimeline(
-                    max_level=self.problem["resource_availability"][r], renewable=True
+            self.resource_timelines.append([])
+            for i in range(4):
+                self.resource_timelines[r].append(
+                    ResourceTimeline(
+                        max_level=1.0,
+                        renewable=True,
+                    )
                 )
-            )
-        for r in range(self.problem["n_nonrenewable_resources"]):
-            self.resource_timelines.append(
-                ResourceTimeline(
-                    max_level=self.problem["resource_availability"][r], renewable=False
+        for r in range(
+            self.problem["n_renewable_resources"],
+            self.problem["n_renewable_resources"]
+            + self.problem["n_nonrenewable_resources"],
+        ):
+            self.resource_timelines.append([])
+            for i in range(4):
+                self.resource_timelines[r].append(
+                    ResourceTimeline(
+                        max_level=1.0,
+                        renewable=False,
+                    )
                 )
-            )
+
+        self.real_durations = None
+        self.real_tct = np.zeros((self.n_nodes), dtype=float)
 
         self.reset_durations()
         self.reset_task_completion_times()
@@ -77,10 +90,19 @@ class PSPState:
 
         if self.observe_conflicts_as_cliques:
             (
-                self.resource_edges,
-                self.resources_id,
-                self.resources_val,
+                self.static_resource_edges,
+                self.static_resources_id,
+                self.static_resources_val,
             ) = compute_resources_graph(self.features[:, 9:])
+        else:
+            self.static_resource_edges = None
+            self.static_resources_id = None
+            self.static_resources_val = None
+
+        self.resources_edges = []
+        self.resources_edges_att = []
+        # self.resources_edges.append((prec, succ))
+        # self.resources_edges_att.append((on_start, critical))
 
     def reset_durations(self, redraw_real=True):
         # at init, draw real durations from distrib if not determinisitc
@@ -115,54 +137,44 @@ class PSPState:
     def get_task_completion_times(self, nodeid):
         return self.features[nodeid, 6:9]
 
+    def get_task_completion_time_real(self, nodeid):
+        print("nodeid", nodeid)
+        print("self.real_tct", self.real_tct)
+        return self.real_tct[nodeid]
+
     def set_task_completion_times(self, nodeid, ct):
         self.features[nodeid, 6:9] = ct
 
+    def set_task_completion_time_real(self, nodeid, ct):
+        self.real_tct[nodeid] = ct
+
     def get_durations(self, nodeid):
         return self.features[nodeid, 3:6]
+
+    def get_durations_real(self, nodeid):
+        return self.real_durations[nodeid]
 
     def reset_selectable(self):
         no_parents = np.where(np.array(self.problem_graph.in_degree())[:, 1] == 0)[0]
         self.features[no_parents, 1] = 1
 
     def reset_task_completion_times(self):
-        open_nodes = np.where(np.array(self.problem_graph.in_degree())[:, 1] == 0)[
-            0
-        ].tolist()
-        while open_nodes:
-            cur_node_id = open_nodes.pop(0)
-
-            if self.problem_graph.in_degree(cur_node_id) == 0:
-                max_tct_predecessors = np.zeros((3))
-            else:
-                task_comp_time_pred = np.stack(
-                    [
-                        self.get_task_completion_times(p)
-                        for p in self.problem_graph.predecessors(cur_node_id)
-                    ]
-                )
-                max_tct_predecessors = np.max(task_comp_time_pred, 0)[0]
-
-            new_completion_time = max_tct_predecessors + self.get_durations(cur_node_id)
-            self.set_task_completion_times(cur_node_id, new_completion_time)
-            for successor in self.problem_graph.successors(cur_node_id):
-                to_open = True
-                for p in self.problem_graph.predecessors(successor):
-                    if p in open_nodes:
-                        to_open = False
-                        break
-                if to_open:
-                    open_nodes.append(successor)
+        self.update_completion_times(None)
 
     def to_features_and_edge_index(self, normalize, input_list):
-        if not self.edges:
-            edge_index = np.transpose(self.numpy_edges)
-        else:
-            edge_index = np.transpose(
-                np.concatenate([self.numpy_edges, np.array(self.edges)])
-            )
+        return (
+            self.normalize_features(),
+            self.numpy_problem_graph,
+            self.static_resource_edges,
+            self.static_resource_id,
+            self.static_resource_val,
+            np.transpose(self.resources_edges),
+            self.resources_edges_att,
+        )
 
-        return self.features, edge_index
+    def normalize_features(self):
+        # TODO: normalize features
+        return self.features
 
     def get_features_wo_real_dur(self):
         return self.features
@@ -179,11 +191,11 @@ class PSPState:
         # mark as affected
         self.features[nodeid, 0] = 1
         # make sucessor selectable, if other parents *jobs* are affected
-        for successor in self.graph.successors(nodeid):
+        for successor in self.problem_graph.successors(nodeid):
             parents_jobs = set(
                 [
                     self.features[pm, 2].astype(int)
-                    for pm in self.graph.predecessors(successor)
+                    for pm in self.problem_graph.predecessors(successor)
                 ]
             )
             # no need to test job from currently affected node
@@ -207,65 +219,110 @@ class PSPState:
     def get_last_finishing_dates(self, jobs):
         if len(jobs) == 0:
             return np.zeros((3))
-        tct = self.dates = self.get_task_completion_times(jobs)
-        return np.amax(dates, axis=0)
+        tct = self.get_task_completion_times(jobs)
+        return np.amax(tct, axis=0)
+
+    def get_last_finishing_dates_real(self, jobs):
+        if len(jobs) == 0:
+            return np.array([0])
+        tct = self.get_task_completion_time_real(jobs)
+        print("tct", tct)
+        print("amax", np.amax(tct, axis=0))
+        return np.array([np.amax(tct, axis=0)])
 
     def compute_dates_on_affectation(self, node_id):
-        job_parents = set(self.graph.predecessors(node_id))
-        affected_nodes = set(np.where(self.features[:, 0] == 1))
+        job_parents = list(self.problem_graph.predecessors(node_id))
         print("job_parents", job_parents)
-        print("affected_nodes", affected_nodes)
-        affected_parents = affected_parents.intersection(job_parents)
+        affected_parents = np.where(self.features[job_parents, 0] == 1)[0]
+        print("affected_parents", affected_parents)
         last_parent_finish_date = self.get_last_finishing_dates(affected_parents)
+        print("last parent finish date", last_parent_finish_date)
+        last_parent_finish_date_real = self.get_last_finishing_dates_real(
+            affected_parents
+        )
 
         resources_used = np.where(self.features[node_id, 9:] != 0)[0]
-        max_r_date = 0
-        pred_on_resource = None
-        pred_on_resource_is_start = None
-        constraining_resource = None
+        max_r_date = np.array([0.0, 0.0, 0.0, 0.0])
+        pred_on_resource = [None] * 4
+        pred_on_resource_is_start = [None] * 4
+        constraining_resource = [None] * 4
 
         for r in resources_used:
-            date, jobid, start_tp = self.get_resource_available_date(
-                r, self.features[node_id, 9 + r]
-            )
-            if date > max_date:
-                max_r_date = date
-                pred_on_resource = job_id
-                pred_on_resource_is_start = start_tp
-                constraining_resource = r
-                self.add_resource_precedence(jobid, node_id, start_tp, criticial=True)
-            else:
-                self.add_resource_precedence(jobid, node_id, start_tp, critical=False)
+            rad = self.get_resource_available_date(r, self.features[node_id, 9 + r])
+            # rad is 4-long list of (date, jobid, start_tp)
+            for i in range(4):
+                if rad[i][0] > max_r_date[i]:
+                    max_r_date[i] = rad[i][0]
+                    pred_on_resource[i] = rad[i][1]
+                    pred_on_resource_is_start[i] = rad[i][2]
+                    constraining_resource[i] = r
+                    if i != 0:
+                        self.add_resource_precedence(
+                            pred_on_resource[i],
+                            node_id,
+                            pred_on_resource_is_start[i],
+                            True,
+                            i,
+                        )
+                else:
+                    if i != 0:
+                        self.add_resource_precedence(
+                            pred_on_resource[i],
+                            node_id,
+                            pred_on_resource_is_start[i],
+                            False,
+                            i,
+                        )
 
         # do a min per coord
-        start = np.max(max_r_date, last_parent_finish_date)
-        self.features[node_id, 6:9] = start + self.features[node_id, 3:6]
+        print("max_r_date", max_r_date)
+        print("last_parent_finish_date_real", last_parent_finish_date_real)
+        print("last_parent_finish_date", last_parent_finish_date)
+        start = np.maximum(
+            max_r_date,
+            np.concatenate([last_parent_finish_date_real, last_parent_finish_date]),
+        )
+        print("start", start)
+        self.features[node_id, 6:9] = start[1:] + self.get_durations(node_id)
+        self.real_tct[node_id] = start[0] + self.get_durations_real(node_id)
 
-        self.insert_timepoints_in_resources(node_id, start, self.features[node_id, 6:9])
+        self.insert_timepoints_in_resources(
+            0, node_id, start[0], self.get_task_completion_time_real(node_id)
+        )
+        for i in range(3):
+            self.insert_timepoints_in_resources(
+                i + 1, node_id, start[i + 1], self.get_task_completion_times(node_id)[i]
+            )
 
         self.update_completion_times(node_id)
 
-    def add_resource_precedence(self, prec, succ, on_start, critical):
+    def add_resource_precedence(self, prec, succ, on_start, critical, timetype):
         self.resources_edges.append((prec, succ))
-        self.resources_edges_att.append((on_start, critical))
+        self.resources_edges_att.append((on_start, critical, timetype))
 
     def get_resource_available_date(self, rid, level):
-        return self.resource_timelines[rid].availability(level)
+        return [self.resource_timelines[rid][i].availability(level) for i in range(4)]
 
-    def insert_timepoints_in_resources(self, node_id, start, end):
+    def insert_timepoints_in_resources(self, timeindex, node_id, start, end):
         resources_used = np.where(self.features[node_id, 9:] != 0)[0]
         for r in resources_used:
-            self.resource_timelines[r].consume(
+            self.resource_timelines[r][timeindex].consume(
                 node_id, self.features[node_id, 9 + r], start, end
             )
 
-    def update_completion_times(node_id):
-        open_nodes = [node_id]
+    def update_completion_times(self, node_id):
+        if node_id is None:
+            open_nodes = np.where(np.array(self.problem_graph.in_degree())[:, 1] == 0)[
+                0
+            ].tolist()
+        else:
+            open_nodes = [node_id]
         while open_nodes:
             cur_node_id = open_nodes.pop(0)
 
             if self.problem_graph.in_degree(cur_node_id) == 0:
                 max_tct_predecessors = np.zeros((3))
+                max_tct_predecessors_real = 0
             else:
                 task_comp_time_pred = np.stack(
                     [
@@ -274,9 +331,21 @@ class PSPState:
                     ]
                 )
                 max_tct_predecessors = np.max(task_comp_time_pred, 0)[0]
+                max_tct_predecessors_real = max(
+                    [
+                        self.get_task_completion_time_real(p)
+                        for p in self.problem_graph.predecessors(cur_node_id)
+                    ]
+                )
 
             new_completion_time = max_tct_predecessors + self.get_durations(cur_node_id)
+            new_completion_time_real = (
+                max_tct_predecessors_real + self.get_durations_real(cur_node_id)
+            )
+
             self.set_task_completion_times(cur_node_id, new_completion_time)
+            self.set_task_completion_time_real(cur_node_id, new_completion_time_real)
+
             for successor in self.problem_graph.successors(cur_node_id):
                 to_open = True
                 for p in self.problem_graph.predecessors(successor):

@@ -3,7 +3,7 @@ file with basedata            : paper
 initial value random generator: 1
 ************************************************************************
 projects                      :  1
-jobs (incl. supersource/sink ):  7
+jobs (incl. supersource/sink ):  8
 horizon                       :  164
 RESOURCES
   - renewable                 :  2   R
@@ -12,7 +12,7 @@ RESOURCES
 ************************************************************************
 PROJECT INFORMATION:
 pronr.  #jobs rel.date duedate tardcost  MPM-Time
-    1     7      0       41       21       41
+    1     8      0       41       21       41
 ************************************************************************
 PRECEDENCE RELATIONS:
 jobnr.    #modes  #successors   successors
@@ -23,7 +23,7 @@ jobnr.    #modes  #successors   successors
   5           1       2           6 7
   6           1       1           8
   7           1       1           8
-  8           1       0
+  8           1       0 
 ************************************************************************
 REQUESTS/DURATIONS:
 jobnr. mode duration  R 1  R 2 

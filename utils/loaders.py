@@ -260,7 +260,7 @@ class PSPLoader:
 
     def firstchar(self, c, stop=False):
         if self.fc != c:
-            raise RuntimeError("bad first char" + c)
+            raise RuntimeError("bad first char " + c + " found: '" + self.fc + "'")
         if not stop:
             self.nextline()
 

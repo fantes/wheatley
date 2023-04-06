@@ -10,18 +10,18 @@ class ResourceTimeline:
 
     def availability(self, level):
         # should return date, previous consumer, boolean indicating if tp is start or end of previous consumer
-        # last tp is last release, all resource is free
+
         ret_tp_index = len(self.timepoints) - 1
-        cand_tp_index = ret_tp_index - 1
-        while True:
-            while (
-                ret_tp_index >= 0
-                and self.timepoints[ret_tp_index][0] == self.timepoints[cand_tp_index]
+        while ret_tp_index > 0:
+            cand_tp_index = ret_tp_index - 1
+            # find timepoint with different previous date
+            while cand_tp_index > 0 and (
+                self.timepoints[ret_tp_index][0] == self.timepoints[cand_tp_index][0]
             ):
                 cand_tp_index -= 1
             if self.timepoints[cand_tp_index][2] >= level:
+                # go back in time
                 ret_tp_index = cand_tp_index
-                cand_tp_index = ret_tp_index - 1
             else:
                 break
         return (
@@ -51,7 +51,7 @@ class ResourceTimeline:
             self.timepoints.insert(end_pos, [end, consumer_id, level_before_end, False])
             for i in range(end_pos, len(self.timepoints)):
                 self.timepoints[i][2] += level
-                assert(self.timepoints[i][2] <= self.max_level
+                assert self.timepoints[i][2] <= self.max_level
 
     def global_availability(self):
         avail = []
