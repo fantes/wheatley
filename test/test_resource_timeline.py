@@ -3,7 +3,6 @@ import sys
 sys.path.append(".")
 
 import pytest
-import numpy as np
 from utils.resource_timeline import ResourceTimeline
 
 
