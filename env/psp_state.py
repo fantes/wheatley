@@ -53,9 +53,7 @@ class PSPState:
         self.numpy_problem_graph = np.array(self.problem_edges)
         self.affected_nodes = set()
 
-        print('self.problem["n_resources"]', self.problem["n_resources"])
         self.resource_timelines = []
-        print("resource_timelines", self.resource_timelines)
         for r in range(self.problem["n_renewable_resources"]):
             self.resource_timelines.append([])
             for i in range(4):
@@ -138,8 +136,6 @@ class PSPState:
         return self.features[nodeid, 6:9]
 
     def get_task_completion_time_real(self, nodeid):
-        print("nodeid", nodeid)
-        print("self.real_tct", self.real_tct)
         return self.real_tct[nodeid]
 
     def set_task_completion_times(self, nodeid, ct):
@@ -275,14 +271,10 @@ class PSPState:
                         )
 
         # do a min per coord
-        print("max_r_date", max_r_date)
-        print("last_parent_finish_date_real", last_parent_finish_date_real)
-        print("last_parent_finish_date", last_parent_finish_date)
         start = np.maximum(
             max_r_date,
             np.concatenate([last_parent_finish_date_real, last_parent_finish_date]),
         )
-        print("start", start)
         self.features[node_id, 6:9] = start[1:] + self.get_durations(node_id)
         self.real_tct[node_id] = start[0] + self.get_durations_real(node_id)
 

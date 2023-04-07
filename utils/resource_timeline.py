@@ -1,15 +1,22 @@
 class ResourceTimeline:
-    def __init__(self, max_level, renewable):
+    def __init__(self, max_level, renewable=True, allow_before_last=True):
         self.max_level = max_level
         self.renewable = renewable
         self.timepoints = [[0, None, max_level, None]]
         # better rep : ordered list of events for every date
-        #
+        # ?
         # self.timepoints = [(0, [[None, max_level, None]])]
         self.global_availability = [0, max_level]
+        # if allow_before_last : a consumer that consumers after an aready consuming one can start
+        # to consume before already consuming ones
+        # if not, allow to consume start to consume only as early as previously consuming tasks
+        self.allow_before_last = allow_before_last
 
     def availability(self, level):
-        # should return date, previous consumer, boolean indicating if tp is start or end of previous consumer
+        # should return date, previous consumer, boolean
+        # indicating if tp is start or end of previous consumer
+        # IMPORTANT NOTE:
+        # this version return first available date, even if before previously inserted consumers
 
         ret_tp_index = len(self.timepoints) - 1
         while ret_tp_index > 0:
@@ -19,10 +26,12 @@ class ResourceTimeline:
                 self.timepoints[ret_tp_index][0] == self.timepoints[cand_tp_index][0]
             ):
                 cand_tp_index -= 1
-            if self.timepoints[cand_tp_index][2] >= level:
-                # go back in time
-                ret_tp_index = cand_tp_index
-            else:
+            if self.timepoints[cand_tp_index][2] < level:
+                break
+            # go back in time
+            ret_tp_index = cand_tp_index
+            if not self.allow_before_last and self.timepoints[cand_tp_index][3]:
+                # if before last is off, do not allow to get back before start of other consumers
                 break
         return (
             self.timepoints[ret_tp_index][0],
@@ -61,23 +70,3 @@ class ResourceTimeline:
                 avail.append([previous_tp[0], previous_tp[2]])
             previous_tp = self.timepoints[i]
         return avail
-
-
-def test():
-    tl1 = ResourceTimeline(4, True)
-    tl2 = ResourceTimeline(2, True)
-    # print(tl1.timepoints)
-    tl1.consume(1, 2, 0, 3)
-    tl1.consume(2, 1, 0, 4)
-    tl1.consume(3, 1, 0, 4)
-    # tl1.consume(3, 2, 4, 10)
-    # tl1.consume(4, 2, 4, 6)
-    # tl1.consume(5, 3, 10, 11)
-    # tl1.consume(6, 3, 11, 15)
-    print(tl1.timepoints)
-    # print(tl1.global_availability())
-    # print(tl1.availability(1))
-
-
-if __name__ == "__main__":
-    test()
