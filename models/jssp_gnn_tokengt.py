@@ -27,7 +27,7 @@ from torch.nn import LayerNorm
 from utils.agent_observation import AgentObservation
 
 
-class GnnTokenGT(torch.nn.Module):
+class JSSPGnnTokenGT(torch.nn.Module):
     def __init__(
         self,
         input_dim_features_extractor,

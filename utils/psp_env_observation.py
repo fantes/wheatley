@@ -33,90 +33,111 @@ class PSPEnvObservation:
         self,
         n_jobs,
         n_modes,
-        features,
-        edge_index,
-        conflicts_edges,
-        conflicts_edges_resourceinfo,
+        n_resources,
         max_n_jobs,
         max_n_modes,
         max_n_resources,
         max_edges_factor,
+        features,
+        problem_edge_index,
+        resource_conf_edges,
+        resource_conf_att,
+        resource_prec_edges,
+        resource_prec_att,
     ):
         """
         This should only hanlde cpu tensors, since it is used on the env side.
         """
 
-        if conflicts_edges is None:
+        if resource_conf_edges is None:
             self.observe_conflicts_as_cliques = False
         else:
             self.observe_conflicts_as_cliques = True
         self.n_jobs = n_jobs
         self.n_modes = n_modes
+        self.n_resources = n_resources
         self.max_n_jobs = max_n_jobs
         self.max_n_modes = max_n_modes
-        self.max_n_nodes = self.max_n_modes
+        self.max_n_resources = max_n_resources
         if max_edges_factor > 0:
-            self.max_n_edges = self.max_n_nodes * max_edges_factor
+            self.max_n_pb_edges = self.max_n_modes * max_edges_factor
+            self.max_n_rc_edges = (
+                self.max_n_modes * max_edges_factor * self.max_n_resources
+            )
+            self.max_n_rp_edges = (
+                self.max_n_modes * max_edges_factor * self.max_n_resources
+            )
+
         else:
-            self.max_n_edges = self.max_n_nodes**2
+            self.max_n_pb_edges = self.max_n_modes**2
+            self.max_n_rc_edges = self.max_n_modes**2 * self.max_n_resources
+            self.max_n_rp_edges = self.max_n_modes**2
         self.n_nodes = n_modes
-        self.n_edges = edge_index.shape[1]
 
         self.features = features
-        self.edge_index = edge_index
-
-        if self.observe_conflicts_as_cliques:
-            self.conflicts_edges = conflicts_edges
-            self.n_conflict_edges = conflicts_edges.shape[1]
-            self.conflicts_edges_machineid = conflicts_edges_machineid
-
-        assert self.n_nodes == self.features.shape[0]
+        self.problem_edge_index = problem_edge_index
+        self.resource_conf_edges = resource_conf_edges
+        self.resource_conf_att = resource_conf_att
+        self.resource_prec_edges = resource_prec_edges
+        self.resource_prec_att = resource_prec_att
 
     def get_n_nodes(self):
         return self.n_nodes
 
-    def get_n_edges(self):
-        return self.n_edges
+    def get_n_rp_edges(self):
+        if self.resource_prec_edges is None:
+            return 0
+        print("debug", self.resource_prec_edges)
+        return self.resource_prec_edges.shape[1]
+
+    def get_n_pr_edges(self):
+        return self.problem_edge_index.shape[1]
+
+    def get_n_rc_edges(self):
+        if self.resource_conf_edges is None:
+            return 0
+        return self.resource_conf_edges.shape[1]
 
     def to_gym_observation(self):
-        """
-        This should only handle cpu tensors, since it is used on the env side.
-        """
 
-        features = np.empty((self.max_n_nodes, self.features.shape[1]))
-        features[0 : self.get_n_nodes(), :] = self.features
-        edge_index = np.empty((2, self.max_n_edges))
-        edge_index[:, 0 : self.get_n_edges()] = self.edge_index
+        features = np.empty((self.max_n_modes, self.features.shape[1]))
+        features[: self.get_n_nodes(), :] = self.features
+        pr_edge_index = np.empty((2, self.max_n_pb_edges))
+        pr_edge_index[:, : self.get_n_pr_edges()] = self.problem_edge_index
+        rp_edge_index = np.empty((2, self.max_n_rp_edges))
+        rp_edge_index[:, : self.get_n_rp_edges()] = self.resource_prec_edges
+        rp_att = np.empty((self.max_n_rp_edges, 3))
+        rp_att[: self.get_n_rp_edges(), :] = self.resource_prec_att
 
         if self.observe_conflicts_as_cliques:
-            conflicts_edges = np.empty(
-                (2, 2 * sum(range(self.max_n_jobs)) * self.max_n_machines)
-            )
-            conflicts_edges[:, 0 : self.conflicts_edges.shape[1]] = self.conflicts_edges
-            conflicts_edges_machineid = np.empty(
-                (2, 2 * sum(range(self.max_n_jobs)) * self.max_n_machines)
-            )
-            conflicts_edges_machineid[
-                :, : self.conflicts_edges_machineid.shape[0]
-            ] = self.conflicts_edges_machineid.unsqueeze(0)
+            rc_edge_index = np.empty((2, self.max_n_rc_edges))
+            rc_edge_index[:, : self.get_n_rc_edges()] = self.resource_conf_edges
+            rc_att = np.empty((self.max_n_rc_edges, 2))
+            rc_att[: self.get_n_rc_edges()] = self.resource_conf_att
 
             return {
                 "n_jobs": self.n_jobs,
                 "n_nodes": self.n_modes,
-                "n_edges": self.n_edges,
+                "n_resources": self.n_resources,
+                "n_pr_edges": self.get_n_pr_edges(),
+                "n_rp_edges": self.get_n_rp_edges(),
+                "n_rc_edges": self.get_n_rc_edges(),
                 "features": features,
-                "edge_index": edge_index.astype("int64"),
-                "n_conflict_edges": self.n_conflict_edges,
-                "conflicts_edges": conflicts_edges.numpy().astype("int64"),
-                "conflicts_edges_resourceinfo": conflicts_edges_resourceinfo.astype(
-                    "int64"
-                ),
+                "pr_edges": pr_edge_index.astype("int64"),
+                "rp_edges": rp_edge_index.astype("int64"),
+                "rc_edges": rc_edge_index.astype("int64"),
+                "rc_att": rc_att,
+                "rp_att": rp_att,
             }
         else:
             return {
                 "n_jobs": self.n_jobs,
                 "n_nodes": self.n_modes,
-                "n_edges": self.n_edges,
+                "n_resources": self.n_resources,
+                "n_pr_edges": self.get_n_pr_edges(),
+                "n_rp_edges": self.get_n_rp_edges(),
                 "features": features,
-                "edge_index": edge_index.astype("int64"),
+                "pr_edges": pr_edge_index.astype("int64"),
+                "rp_edges": rp_edge_index.astype("int64"),
+                "rp_att": rp_att,
             }

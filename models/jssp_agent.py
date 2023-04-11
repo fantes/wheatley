@@ -25,8 +25,8 @@
 import torch
 
 from models.agent import Agent
-from models.gnn_dgl import GnnDGL
-from models.gnn_tokengt import GnnTokenGT
+from models.jssp_gnn_dgl import JSSPGnnDGL as GnnDGL
+from models.jssp_gnn_tokengt import JSSPGnnTokenGT as GnnTokenGT
 from models.mlp import MLP
 from torch.distributions.categorical import Categorical
 from functools import partial

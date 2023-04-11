@@ -497,6 +497,7 @@ def lr_schedule_linear(top, end, percent_warmup, x_orig):
 
 
 def compute_resources_graph(r_info):
+    n_modes = r_info.shape[0]
     # r_info is n_modes x n_resources, contains values between 0 and 1
     conflicts = np.where(
         np.logical_and(

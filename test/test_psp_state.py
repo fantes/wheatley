@@ -10,6 +10,8 @@ from problem.psp_description import PSPDescription
 from args import args, exp_name, path
 from env.psp_env_specification import PSPEnvSpecification
 from utils.loaders import PSPLoader
+from utils.psp_env_observation import PSPEnvObservation as EnvObservation
+from utils.psp_agent_observation import PSPAgentObservation as AgentObservation
 
 
 @pytest.fixture
@@ -59,6 +61,17 @@ def state_small(problem_description_small, env_specification_small):
     )
 
 
+def test_state_conf(problem_description_small, env_specification_small, capsys):
+    with capsys.disabled():
+        s = PSPState(
+            env_specification_small,
+            problem_description_small,
+            problem_description_small.train_psps[0],
+            deterministic=True,
+            observe_conflicts_as_cliques=True,
+        )
+
+
 def test_state(state_small, capsys):
     s = state_small
     # no node is affected
@@ -78,11 +91,6 @@ def test_state(state_small, capsys):
     assert s.features[1, 1] == 1
     assert s.features[2, 1] == 1
     assert np.all(s.features[3:, 1] == 0)
-    with capsys.disabled():
-        print("tl1", s.resource_timelines[0][0].timepoints)
-        print("tl2", s.resource_timelines[1][0].timepoints)
-        print("tct", s.get_task_completion_times(0))
-        print("tct_r", s.get_task_completion_time_real(0))
 
     s.compute_dates_on_affectation(1)
     s.affect_node(1)
@@ -92,11 +100,6 @@ def test_state(state_small, capsys):
     assert np.all(s.features[:2, 1] == 0)
     assert np.all(s.features[2, 1] == 1)
     assert np.all(s.features[3:, 1] == 0)
-    with capsys.disabled():
-        print("tl1", s.resource_timelines[0][0].timepoints)
-        print("tl2", s.resource_timelines[1][0].timepoints)
-        print("tct", s.get_task_completion_times(1))
-        print("tct_r", s.get_task_completion_time_real(1))
 
     s.compute_dates_on_affectation(2)
     s.affect_node(2)
@@ -106,33 +109,62 @@ def test_state(state_small, capsys):
     assert np.all(s.features[:3, 1] == 0)
     assert np.all(s.features[3:5, 1] == 1)
     assert np.all(s.features[5:, 1] == 0)
-    with capsys.disabled():
-        print("tl1", s.resource_timelines[0][0].timepoints)
-        print("tl2", s.resource_timelines[1][0].timepoints)
-        print("tct", s.get_task_completion_times(2))
-        print("tct_r", s.get_task_completion_time_real(2))
 
     s.compute_dates_on_affectation(3)
     s.affect_node(3)
     s.update_completion_times(3)
-    assert s.get_task_completion_time_real(3) == 10.0
+    assert s.tct_real(3) == 10.0
 
     s.compute_dates_on_affectation(4)
     s.affect_node(4)
     s.update_completion_times(4)
-    print(s.get_task_completion_time_real(4) == 6.0)
+    print(s.tct_real(4) == 6.0)
 
     s.compute_dates_on_affectation(5)
     s.affect_node(5)
     s.update_completion_times(5)
-    print(s.get_task_completion_time_real(5) == 11.0)
+    print(s.tct_real(5) == 11.0)
 
     s.compute_dates_on_affectation(6)
     s.affect_node(6)
     s.update_completion_times(6)
-    print(s.get_task_completion_time_real(6) == 15.0)
+    print(s.tct_real(6) == 15.0)
 
     s.compute_dates_on_affectation(7)
     s.affect_node(7)
     s.update_completion_times(7)
-    print(s.get_task_completion_time_real(6) == 15.0)
+    print(s.tct_real(6) == 15.0)
+
+
+def test_obs(state_small, capsys):
+    with capsys.disabled():
+        s = state_small
+        (
+            features,
+            problem_edge_index,
+            resource_conf_edges,
+            resource_conf_att,
+            resource_prec_edges,
+            resource_prec_att,
+        ) = s.to_features_and_edge_index(False)
+        print("resource_prec_edges", resource_prec_edges)
+
+        eog = EnvObservation(
+            s.problem["n_jobs"],
+            s.n_nodes,
+            s.problem["n_resources"],
+            s.problem_description.max_n_jobs,
+            s.problem_description.max_n_modes,
+            s.env_specification.max_n_resources,
+            s.env_specification.max_edges_factor,
+            features,
+            problem_edge_index,
+            resource_conf_edges,
+            resource_conf_att,
+            resource_prec_edges,
+            resource_prec_att,
+        ).to_gym_observation()
+
+        eogt = AgentObservation.np_to_torch(eog)
+
+        o = AgentObservation.from_gym_observation(eogt, conflicts="clique")

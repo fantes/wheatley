@@ -28,7 +28,7 @@ def test_resource_timeline():
     assert a5 == (15, 6, False)
 
 
-def test_resource_timeline_after_only(capsys):
+def test_resource_timeline_after_only():
     rt = ResourceTimeline(4, renewable=True, allow_before_last=False)
     a1 = rt.availability(2)
     assert a1 == (0, None, None)
@@ -40,4 +40,4 @@ def test_resource_timeline_after_only(capsys):
     assert a3 == (3, 1, False)
     rt.consume(3, 2, 4, 10)
     a4 = rt.availability(2)
-    assert a4 = (4, 3, True)
+    assert a4 == (4, 3, True)

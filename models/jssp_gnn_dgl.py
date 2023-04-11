@@ -39,7 +39,7 @@ from dgl import LaplacianPE
 from utils.agent_observation import AgentObservation
 
 
-class GnnDGL(torch.nn.Module):
+class JSSPGnnDGL(torch.nn.Module):
     def __init__(
         self,
         input_dim_features_extractor,

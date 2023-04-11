@@ -46,6 +46,7 @@ class PSPEnv(gym.Env):
         self.reward_model_config = problem_description.reward_model_config
         self.n_jobs = self.problem["n_jobs"]
         self.n_modes = self.problem["n_modes"]
+        self.n_resources = self.problem["n_resources"]
         # adjust n_jobs if we are going to sample or chunk
         if env_specification.sample_n_jobs != -1:
             self.n_jobs = env_specification.sample_n_jobs
@@ -60,66 +61,106 @@ class PSPEnv(gym.Env):
         )
 
         self.n_features = self.env_specification.n_features
-        self.action_space = Discrete(
-            self.env_specification.max_n_nodes
-            * (2 if self.env_specification.add_boolean else 1)
-        )
+        self.action_space = Discrete(self.env_specification.max_n_nodes)
 
         if self.env_specification.max_edges_factor > 0:
-            shape = (
+            shape_pb = (
                 2,
                 self.env_specification.max_edges_factor
                 * self.env_specification.max_n_nodes,
             )
+            shape_rc = (
+                2,
+                self.env_specification.max_edges_factor
+                * self.env_specification.max_n_nodes
+                * self.env_specification.max_n_resources,
+            )
+            shape_rc_att = (
+                2,  # rid , rval
+                self.env_specification.max_edges_factor
+                * self.env_specification.max_n_nodes
+                * self.env_specification.max_n_resources,
+            )
+            shape_rp = (
+                2,
+                self.env_specification.max_edges_factor
+                * self.env_specification.max_n_nodes
+                * self.env_specification.max_n_resources,
+            )
+            shape_rp_att = (
+                3,  # on_start, critical, timetype
+                self.env_specification.max_edges_factor
+                * self.env_specification.max_n_nodes
+                * self.env_specification.max_n_resources,
+            )
+
         else:
-            shape = (2, self.env_specification.max_n_edges)
+            shape_pb = (2, self.env_specification.max_n_edges)
+            shape_rc = (
+                2,
+                self.env_specification.max_n_edges
+                * self.env_specification.max_n_resources,
+            )
+            shape_rc_att = (
+                # rid, rval
+                self.env_specification.max_n_edges
+                * self.env_specification.max_n_resources,
+                2,
+            )
+            shape_rp = (
+                2,
+                self.env_specification.max_n_edges
+                * self.env_specification.max_n_resources,
+            )
+            shape_rp_att = (
+                # on_start, critical, timetype
+                self.env_specification.max_n_edges
+                * self.env_specification.max_n_resources,
+                3,
+            )
 
         self.observation_space = Dict(
             {
                 "n_jobs": Discrete(self.problem_description.max_n_jobs + 1),
+                "n_modes": Discrete(self.problem_description.max_n_modes + 1),
                 "n_resources": Discrete(self.env_specification.max_n_resources + 1),
-                "n_nodes": Discrete(self.env_specification.max_n_nodes + 1),
-                "n_edges": Discrete(self.env_specification.max_n_edges + 1),
+                "n_pr_edges": Discrete(self.env_specification.max_n_edges + 1),
+                "n_rp_edges": Discrete(self.env_specification.max_n_edges + 1),
                 "features": Box(
                     low=0,
                     high=1000,
                     shape=(self.env_specification.max_n_nodes, self.n_features),
                 ),
-                "edge_index": Box(
+                "pr_edge_index": Box(
                     low=0,
                     high=self.env_specification.max_n_nodes,
-                    shape=shape,
+                    shape=shape_pr,
                     dtype=np.int64,
                 ),
+                "rp_edge_index": Box(
+                    low=0,
+                    high=self.env_specification.max_n_nodes,
+                    shape=shape_rp,
+                    dtype=np.int64,
+                ),
+                "rp_att": Box(low=0, high=1000, shape=shape_rp_att, dtype=np.int64),
             }
         )
 
         if self.observe_conflicts_as_cliques:
-            n_conflict_edges = (
-                2
-                * sum(range(self.env_specification.max_n_modes))
-                * self.env_specification.max_n_resources
+            self.observation_space["n_rc_edges"] = Discrete(
+                self.env_specification.max_n_edges + 1
             )
-
-            shape_conflict_edges = (2, n_conflict_edges)
-
-            self.observation_space["n_conflict_edges"] = Discrete(n_conflict_edges)
-            self.observation_space["conflicts_edges"] = Box(
+            self.observation_space["rc_edge_index"] = Box(
                 low=0,
                 high=self.env_specification.max_n_nodes,
-                shape=(2, n_conflict_edges),
+                shape=shape_rc,
                 dtype=np.int64,
             )
-            self.observation_space["conflicts_edges_resourceinfo"] = Box(
-                low=np.array([0, 0, 0]),
-                high=np.array(
-                    [
-                        self.env_specification.max_n_resources,
-                        self.env_specification.max_resource_request,
-                        self.env_specification.max_resource_availability,
-                    ]
-                ),
-                shape=(2, n_conflict_edges, 3),
+            self.observation_space["rc_att"] = Box(
+                low=0,
+                hiegh=1000,
+                shape=shape_rc_att,
                 dtype=np.int64,
             )
 
@@ -222,52 +263,32 @@ class PSPEnv(gym.Env):
         self.reward_model = TerminalRewardModel()
 
     def observe(self):
-        if self.observe_conflicts_as_cliques:
-            (
-                features,
-                edge_index,
-                conflicts_edges,
-                conflicts_edges_machineid,
-            ) = self.state.to_features_and_edge_index(
-                self.env_specification.normalize_input,
-                self.env_specification.input_list,
-            )
-            # remove real duration from obs (in state for computing makespan on the fly)
-            if not self.env_specification.observe_real_duration_when_affect:
+        (
+            features,
+            problem_edge_index,
+            resource_conf_edges,
+            resource_conf_att,
+            resource_prec_edges,
+            resource_prec_att,
+        ) = self.state.to_features_and_edge_index(
+            self.env_specification.normalize_input
+        )
 
-                features = self.state.get_features_wo_real_dur()
-            return EnvObservation(
-                self.n_jobs,
-                self.n_modes,
-                features,
-                edge_index,
-                conflicts_edges,
-                conflicts_edges_machineid,
-                self.env_specification.max_n_jobs,
-                self.env_specification.max_n_resources,
-                self.env_specification.max_edges_factor,
-            )
-
-        else:
-            features, edge_index = self.state.to_features_and_edge_index(
-                self.env_specification.normalize_input,
-                self.env_specification.input_list,
-            )
-            # remove real duration from obs (in state for computing makespan on the fly)
-            if not self.env_specification.observe_real_duration_when_affect:
-                features = self.state.get_features_wo_real_dur()
-            return EnvObservation(
-                self.n_jobs,
-                self.n_modes,
-                features,
-                edge_index,
-                None,
-                None,
-                self.problem_description.max_n_jobs,
-                self.problem_description.max_n_modes,
-                self.problem_description.max_n_resources,
-                self.env_specification.max_edges_factor,
-            )
+        return EnvObservation(
+            self.n_jobs,
+            self.n_modes,
+            self.n_resources,
+            self.env_specification.max_n_jobs,
+            self.problem_description.max_n_modes,
+            self.env_specification.max_n_resources,
+            self.env_specification.max_edges_factor,
+            features,
+            problem_edge_index,
+            resource_conf_edges,
+            resource_conf_att,
+            resource_prec_edges,
+            resource_prec_att,
+        )
 
     def done(self):
         return self.state.done()

@@ -31,7 +31,7 @@ import dgl
 import time
 
 
-class AgentObservation:
+class JSSPAgentObservation:
     def __init__(self, graphs, glist=False):
         self.graphs = graphs
         self.glist = glist
