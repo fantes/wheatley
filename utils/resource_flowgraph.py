@@ -63,7 +63,6 @@ class ResourceFlowGraph:
         to_add_in_frontier = []
         flow_dict = {}
         while available_capa < level:
-            print("cur_pos = " + str(cur_pos))
             available_capa = available_capa + self.frontier[cur_pos][2]
             to_add_in_frontier.append([end,consumer_id, self.unit_val])
             origin_node = self.frontier[cur_pos][1]
