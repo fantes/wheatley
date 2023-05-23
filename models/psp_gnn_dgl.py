@@ -67,6 +67,7 @@ class PSPGnnDGL(torch.nn.Module):
 
         self.features_dim *= 2
         self.max_n_resources = max_n_resources
+        print("GNN DGL max_n_resources", self.max_n_resources)
 
         self.hidden_dim = hidden_dim_features_extractor
         self.graph_pooling = graph_pooling
@@ -101,7 +102,11 @@ class PSPGnnDGL(torch.nn.Module):
             )
 
             self.rc_att_embedder = torch.nn.Linear(2, hidden_dim_features_extractor)
-            self.rp_att_embedder = torch.nn.Linear(3, hidden_dim_features_extractor)
+            # FACTORED
+            # self.rp_att_embedder = torch.nn.Linear(3, hidden_dim_features_extractor)
+            self.rp_att_embedder = torch.nn.Linear(
+                max_n_resources, hidden_dim_features_extractor
+            )
         elif self.edge_embedding_flavor == "cat":
             self.edge_type_embedder = torch.nn.Embedding(7, 7)
             self.resource_id_embedder = torch.nn.Embedding(
@@ -115,7 +120,11 @@ class PSPGnnDGL(torch.nn.Module):
             self.rc_att_hidden_dim = int(rest / 2)
             self.rp_att_hidden_dim = rest - self.rc_att_hidden_dim
             self.rc_att_embedder = torch.nn.Linear(2, self.rc_att_hidden_dim)
-            self.rp_att_embedder = torch.nn.Linear(3, self.rp_att_hidden_dim)
+            # FACTORED
+            # self.rp_att_embedder = torch.nn.Linear(3, self.rp_att_hidden_dim)
+            self.rp_att_embedder = torch.nn.Linear(
+                max_n_resources, self.rp_att_hidden_dim
+            )
         elif self.edge_embedding_flavor == "cartesian":
             self.type_rid_hidden_dim = int(hidden_dim_features_extractor / 2)
             self.type_rid_embedder = torch.nn.Embedding(
@@ -130,7 +139,11 @@ class PSPGnnDGL(torch.nn.Module):
                 - self.rc_att_hidden_dim
             )
             self.rc_att_embedder = torch.nn.Linear(2, self.rc_att_hidden_dim)
-            self.rp_att_embedder = torch.nn.Linear(3, self.rp_att_hidden_dim)
+            # FACTORED
+            # self.rp_att_embedder = torch.nn.Linear(3, self.rp_att_hidden_dim)
+            self.rp_att_embedder = torch.nn.Linear(
+                self.max_n_resources, self.rp_att_hidden_dim
+            )
         else:
             raise ValueError(
                 "unknown edge embedding flavor " + self.edge_embedding_flavor
@@ -226,7 +239,10 @@ class PSPGnnDGL(torch.nn.Module):
     def forward(self, obs):
 
         observation = AgentObservation.from_gym_observation(
-            obs, conflicts=self.conflicts, add_self_loops=False
+            obs,
+            conflicts=self.conflicts,
+            add_self_loops=False,
+            max_n_resources=self.max_n_resources,
         )
         batch_size = observation.get_batch_size()
         n_nodes = observation.get_n_nodes()

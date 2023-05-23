@@ -730,3 +730,56 @@ def get_obs(b_obs, mb_ind):
     for key in b_obs:
         minibatched_obs[key] = b_obs[key][mb_ind]
     return minibatched_obs
+
+
+def factor_rp(rp_edges, rp_att, n_max_resources):
+    f_rp_edges = {}
+    for i in range(rp_edges.shape[1]):
+        src = rp_edges[0, i].item()
+        dst = rp_edges[1, i].item()
+        rid = int(rp_att[i, 0].item())
+        att = rp_att[i, 1:]
+        if (src, dst) not in f_rp_edges:
+            f_rp_edges[(src, dst)] = torch.zeros(n_max_resources)
+        f_rp_edges[(src, dst)][rid] = att[0]
+
+    new_edges = torch.empty((2, len(f_rp_edges)), dtype=torch.long)
+    new_att = torch.empty((len(f_rp_edges), n_max_resources))
+    ie = 0
+    for (src, dst) in f_rp_edges:
+        new_edges[0, ie] = src
+        new_edges[1, ie] = dst
+        new_att[ie] = f_rp_edges[(src, dst)]
+        ie += 1
+    return new_edges, new_att
+
+
+def factor_rp2(rp_edges, rp_att, n_max_resources):
+    f_rp_edges_pos = {}
+    pos = 0
+
+    src = rp_edges[0, 0].item()
+    dst = rp_edges[1, 0].item()
+    rid = int(rp_att[0, 0].item())
+    att = rp_att[0, 1:]
+    f_rp_edges_pos[(src, dst)] = pos
+    new_att = [torch.zeros((n_max_resources))]
+    new_edges = [torch.tensor([[src], [dst]], dtype=torch.long)]
+    new_att[pos][rid] = att[0]
+    pos += 1
+
+    for i in range(1, rp_edges.shape[1]):
+        src = rp_edges[0, i].item()
+        dst = rp_edges[1, i].item()
+        rid = int(rp_att[i, 0].item())
+        att = rp_att[i, 1:]
+        if (src, dst) not in f_rp_edges_pos:
+            new_att.append(torch.zeros((n_max_resources)))
+            new_edges.append(torch.tensor([[src], [dst]], dtype=torch.long))
+            f_rp_edges_pos[(src, dst)] = pos
+            new_att[pos][rid] = att[0]
+            pos += 1
+        else:
+            new_att[f_rp_edges_pos[(src, dst)]][rid] = att[0]
+
+    return torch.cat(new_edges, dim=1), torch.stack(new_att)

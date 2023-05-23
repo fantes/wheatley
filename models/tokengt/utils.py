@@ -63,7 +63,7 @@ def get_laplacian_pe_simple(g, cache=None, k=50):
 
     # classical computation
     # start = time.time()
-    A = g.adj(scipy_fmt="csr")  # adjacency matrix
+    A = g.adj_external(scipy_fmt="csr")  # adjacency matrix
     N = sparse.diags(F.asnumpy(g.in_degrees()).clip(1) ** -0.5, dtype=float)  # D^-1/2
     L = sparse.eye(g.num_nodes()) - N @ A @ N
     EigVal, EigVec = np.linalg.eigh(L.toarray())
