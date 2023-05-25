@@ -27,6 +27,7 @@ class PSPState:
         observe_conflicts_as_cliques=True,
         resource_model="flowGraph",  # or timeline
         normalize_features=True,
+        forget_nodes=False,
     ):
         self.problem = problem
         self.problem_description = problem_description
@@ -47,6 +48,7 @@ class PSPState:
         self.factored_rp = env_specification.factored_rp
 
         self.edge_index = {}
+        self.forget_nodes = forget_nodes
 
         self.resource_prec_edges = []
         self.resource_prec_att = []
@@ -74,6 +76,8 @@ class PSPState:
                     for dest_mode in self.job_modes[succ_job - 1]:
                         self.problem_edges.append((orig_mode, dest_mode))
         self.problem_graph = nx.DiGraph(self.problem_edges)
+        if self.forget_nodes:
+            self.remaining_graph = nx.DiGraph(self.problem_edges)
         # nx.draw_networkx(self.graph)
         # plt.show()
         self.numpy_problem_graph = np.transpose(np.array(self.problem_edges))
@@ -298,9 +302,16 @@ class PSPState:
             rpe = None
             rpa = None
 
+        if self.forget_nodes:
+            edges = [e for e in self.remaining_graph.edges]
+            npgraph = np.transpose(np.array(edges))
+            # TODO : filter rpe, rpa
+            # same with rce, rca if precomputed
+        else:
+            npgraph = self.numpy_problem_graph
         return (
             self.normalize_features(),
-            self.numpy_problem_graph,
+            npgraph,
             rce,
             rca,
             rpe,
@@ -406,6 +417,8 @@ class PSPState:
         self.set_unselectable(self.modes(self.jobid(nodeid)))
         # mark as affected
         self.set_affected(nodeid)
+        if self.forget_nodes:
+            self.remaining_graph.remove_nodes_from(self.modes(self.jobid(nodeid)))
         # make sucessor selectable, if other parents *jobs* are affected
         for successor in self.problem_graph.successors(nodeid):
             parents_jobs = set(
@@ -432,6 +445,8 @@ class PSPState:
     def normalize_features(self):
         if self.normalize:
             feat = np.copy(self.features)
+            if self.forget_nodes:
+                feat = feat[list(self.remaining_graph.nodes())]
             feat[:, 3:9] /= self.max_duration
             return feat
         return self.features
