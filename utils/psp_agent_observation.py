@@ -444,7 +444,11 @@ class PSPAgentObservation:
 
         if do_batch:
             graph = dgl.batch(graphs)
+            node_batch_index = torch.arange(len(batch_num_nodes)).repeat_interleave(
+                torch.tensor(batch_num_nodes)
+            )
             graph.set_batch_num_nodes(torch.tensor(batch_num_nodes))
+            graph.ndata["bi"] = node_batch_index
             graph.set_batch_num_edges(torch.tensor(batch_num_edges))
 
             return cls(graph, glist=False)

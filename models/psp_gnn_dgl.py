@@ -29,6 +29,7 @@ from dgl.nn import EGATConv
 
 from dgl import LaplacianPE
 from utils.psp_agent_observation import PSPAgentObservation as AgentObservation
+from utils.norm import Norm
 
 
 class PSPGnnDGL(torch.nn.Module):
@@ -168,17 +169,20 @@ class PSPGnnDGL(torch.nn.Module):
         if self.normalize:
             self.norms = torch.nn.ModuleList()
             self.normsbis = torch.nn.ModuleList()
-            self.norm0 = torch.nn.BatchNorm1d(input_dim_features_extractor)
-            self.norm1 = torch.nn.BatchNorm1d(hidden_dim_features_extractor)
+            # self.norm0 = torch.nn.BatchNorm1d(input_dim_features_extractor)
+            # self.norm1 = torch.nn.BatchNorm1d(hidden_dim_features_extractor)
+            self.norm1 = Norm("gn", hidden_dim_features_extractor)
 
         self.mlps = torch.nn.ModuleList()
 
         for layer in range(self.n_layers_features_extractor):
 
             if self.normalize:
-                self.norms.append(torch.nn.BatchNorm1d(self.hidden_dim))
+                # self.norms.append(torch.nn.BatchNorm1d(self.hidden_dim))
+                self.norms.append(Norm("gn", self.hidden_dim))
                 if self.residual:
-                    self.normsbis.append(torch.nn.BatchNorm1d(self.hidden_dim))
+                    # self.normsbis.append(torch.nn.BatchNorm1d(self.hidden_dim))
+                    self.normsbis.append(Norm("gn", self.hidden_dim))
 
             self.features_extractors.append(
                 EGATConv(
@@ -259,6 +263,11 @@ class PSPGnnDGL(torch.nn.Module):
         node_offset = num_nodes
 
         origbnn = g.batch_num_nodes()
+        batch_num_nodes = g.batch_num_nodes()
+        batch_index = (
+            torch.arange(batch_size).to(g.device).repeat_interleave(batch_num_nodes)
+        )
+
         if self.graph_pooling == "learn":
             poolnodes = list(range(num_nodes, num_nodes + batch_size))
             g.add_nodes(
@@ -285,6 +294,11 @@ class PSPGnnDGL(torch.nn.Module):
             # INVERSE POOLING BELOW !
             # g.add_edges(ei0, ei1, data={"type": torch.LongTensor([7] * len(ei0))})
             node_offset += batch_size
+            batch_num_nodes += 1
+            g.set_batch_num_nodes(batch_num_nodes)
+            batch_index = torch.cat([batch_index, torch.arange(batch_size)])
+
+        g.ndata["batch_index"] = batch_index
 
         g = g.to(next(self.parameters()).device)
         features = g.ndata["feat"]
@@ -296,13 +310,13 @@ class PSPGnnDGL(torch.nn.Module):
 
         if self.layer_pooling == "all":
             features_list = []
-        if self.normalize:
-            features = self.norm0(features)
+        # if self.normalize:
+        #     features = self.norm0(features)
         if self.layer_pooling == "all":
             features_list.append(features)
-        features = self.features_embedder(features)
-        if self.normalize:
-            features = self.norm1(features)
+        features = self.features_embedder(features, g)
+        # if self.normalize:
+        #     features = self.norm1(features, g)
         if self.layer_pooling == "all":
             features_list.append(features)
 
@@ -318,18 +332,18 @@ class PSPGnnDGL(torch.nn.Module):
             features, new_e_attr = self.features_extractors[layer](
                 g, features, g.edata["emb"]
             )
-            features = self.mlps[layer](features.flatten(start_dim=-2, end_dim=-1))
+            features = self.mlps[layer](features.flatten(start_dim=-2, end_dim=-1), g)
             # update edge features below
             # g.edata["emb"] = self.mlps_edges[layer](new_e_attr.flatten(start_dim=-2, end_dim=-1))
-            if self.normalize:
-                features = self.norms[layer](features)
+            # if self.normalize:
+            #     features = self.norms[layer](features)
             if self.residual:
                 if self.layer_pooling == "all":
                     features += features_list[-1]
                 else:
                     features += previous_feat
-                if self.normalize:
-                    features = self.normsbis[layer](features)
+                # if self.normalize:
+                #     features = self.normsbis[layer](features, g)
                 if self.layer_pooling == "last":
                     previous_feat = features
             if self.layer_pooling == "all":

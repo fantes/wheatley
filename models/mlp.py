@@ -22,6 +22,7 @@
 #
 
 import torch
+from utils.norm import Norm
 
 
 class MLP(torch.nn.Module):
@@ -42,19 +43,17 @@ class MLP(torch.nn.Module):
         self.batch_norm = batch_norm
 
         if self.batch_norm:
-            self.batch_norms = torch.nn.ModuleList()
+            self.norms = torch.nn.ModuleList()
 
         if self.n_layers == 1:
             self.layers.append(torch.nn.Linear(input_dim, output_dim))
         else:
             self.layers.append(torch.nn.Linear(input_dim, hidden_dim))
-            for i in range(self.n_layers - 2):
+            for i in range(self.n_layers - 1):
                 self.layers.append(torch.nn.Linear(hidden_dim, hidden_dim))
                 if self.batch_norm:
-                    self.batch_norms.append(torch.nn.BatchNorm1d(hidden_dim))
+                    self.norms.append(Norm("gn", hidden_dim))
             self.layers.append(torch.nn.Linear(hidden_dim, output_dim))
-            if self.batch_norm:
-                self.batch_norms.append(torch.nn.BatchNorm1d(output_dim))
 
         if type(activation) == str:
             if activation == "tanh":
@@ -72,12 +71,12 @@ class MLP(torch.nn.Module):
         else:
             self.activation_layer = activation()
 
-    def forward(self, x):
+    def forward(self, x, g=None):
         for layer in range(self.n_layers - 1):
-            if self.batch_norm:
-                x = self.batch_norms[layer](
-                    self.activation_layer(self.layers[layer](x))
-                )
+            if self.batch_norm and g is not None:
+                # x = self.activation_layer(self.norms[layer](self.layers[layer](x), g))
+                x = self.norms[layer](self.activation_layer(self.layers[layer](x)), g)
+
             else:
                 x = self.activation_layer(self.layers[layer](x))
         return self.layers[-1](x)
