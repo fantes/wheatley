@@ -2,6 +2,7 @@ import torch
 
 from psp.graph.graph_conv import GraphConv
 from generic.mlp import MLP
+from torch.utils.checkpoint import checkpoint
 
 
 class GnnFlat(torch.nn.Module):
@@ -22,6 +23,7 @@ class GnnFlat(torch.nn.Module):
         update_edge_features_pe,
         shared_conv,
         pyg,
+        checkpoint,
     ):
         super().__init__()
         self.hidden_dim = hidden_dim_features_extractor
@@ -44,6 +46,7 @@ class GnnFlat(torch.nn.Module):
             norm=self.normalize,
             activation=activation_features_extractor,
         )
+        self.checkpoint = checkpoint
 
         if self.shared_conv:
             self.features_extractors = GraphConv(
@@ -187,12 +190,24 @@ class GnnFlat(torch.nn.Module):
                     )
                     features = self.mlps(features)
                 else:
-                    features, _ = self.features_extractors[layer](
-                        g._graph,
-                        features,
-                        edge_features,
-                    )
-                    features = self.mlps[layer](features)
+                    if layer % self.checkpoint:
+                        features, _ = checkpoint(
+                            self.features_extractors[layer],
+                            g._graph,
+                            features,
+                            edge_features,
+                            use_reentrant=False,
+                        )
+                        features = checkpoint(
+                            self.mlps[layer], features, use_reentrant=False
+                        )
+                    else:
+                        features, _ = self.features_extractors[layer](
+                            g._graph,
+                            features,
+                            edge_features,
+                        )
+                        features = self.mlps[layer](features)
 
             if self.rwpe_k != 0:
                 if self.update_edge_features_pe:
