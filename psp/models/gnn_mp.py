@@ -90,12 +90,19 @@ class GnnMP(torch.nn.Module):
             layer_pooling = "last"
 
         if layer_pooling == "all":
-            self.features_dim = (
-                self.input_dim_features_extractor
-                + (hidden_dim_features_extractor + self.rwpe_h)
-                * (n_layers_features_extractor + 1)
-                + self.rwpe_h
-            )
+            if hierarchical:
+                self.features_dim = (
+                    self.input_dim_features_extractor
+                    + hidden_dim_features_extractor * (n_layers_features_extractor + 2)
+                )
+
+            else:
+                self.features_dim = (
+                    self.input_dim_features_extractor
+                    + (hidden_dim_features_extractor + self.rwpe_h)
+                    * (n_layers_features_extractor + 1)
+                    + self.rwpe_h
+                )
         else:
             self.features_dim = hidden_dim_features_extractor + self.rwpe_h
 
@@ -405,6 +412,7 @@ class GnnMP(torch.nn.Module):
                 )
 
         features = self.gnn(g, features, pe)
+
         if self.dual_net:
             features2 = self.gnn2(g, features2, pe)
 
